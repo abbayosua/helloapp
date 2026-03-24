@@ -275,7 +275,7 @@ CREATE POLICY "Users can view group admins" ON group_admins
 
 -- Group admins can add other admins
 CREATE POLICY "Group admins can manage admins" ON group_admins
-  FOR INSERT USING (
+  FOR INSERT WITH CHECK (
     EXISTS (
       SELECT 1 FROM group_admins ga
       WHERE ga.group_id = group_admins.group_id AND ga.user_id = auth.uid()

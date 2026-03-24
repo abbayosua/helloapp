@@ -266,3 +266,6 @@ Icon "undefined" not found in Lucide icons
 Icon "undefined" not found in Lucide icons
 Icon "undefined" not found in Lucide icons
  GET /register 200 in 54ms (compile: 3ms, proxy.ts: 4ms, render: 47ms)
+Icon "undefined" not found in Lucide icons
+Icon "undefined" not found in Lucide icons
+ GET /login 200 in 55ms (compile: 5ms, proxy.ts: 4ms, render: 45ms)
