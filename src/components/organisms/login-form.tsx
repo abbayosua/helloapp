@@ -63,6 +63,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
       )}
 
       <FormField
+        name="email"
         label="Email"
         type="email"
         placeholder="Enter your email"
@@ -73,6 +74,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
       />
 
       <FormField
+        name="password"
         label="Password"
         type="password"
         placeholder="Enter your password"

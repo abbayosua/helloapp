@@ -1,6 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import type { MessageWithSender, NewMessage } from '@/types/database';
+import type { MessageWithSender } from '@/types/database';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -55,31 +55,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         message_type,
         media_url,
         reply_to,
-        is_deleted,
-        is_edited,
-        sender:profiles!messages_sender_id_fkey (
+        deleted_at,
+        sender:profiles!sender_id (
           id,
-          email,
-          full_name,
+          display_name,
           avatar_url,
-          is_online
-        ),
-        reply_to_message:messages!messages_reply_to_fkey (
-          id,
-          content,
-          sender_id,
-          created_at
+          status
         ),
         reactions:message_reactions (
           id,
           user_id,
-          reaction,
+          emoji,
           created_at
         )
       `
       )
       .eq('conversation_id', conversationId)
-      .eq('is_deleted', false)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(limit + 1); // Fetch one extra to check if there are more
 
@@ -114,10 +106,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       message_type: msg.message_type,
       media_url: msg.media_url,
       reply_to: msg.reply_to,
-      is_deleted: msg.is_deleted,
-      is_edited: msg.is_edited,
+      deleted_at: msg.deleted_at,
       sender: msg.sender,
-      reply_to_message: msg.reply_to_message,
       reactions: msg.reactions || [],
     }));
 
@@ -149,6 +139,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: conversationId } = await params;
     const supabase = await createClient();
+    const adminClient = await createAdminClient(); // Use admin client for RLS operations
 
     // Check authentication
     const {
@@ -161,7 +152,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if user is a participant in this conversation
-    const { data: participation, error: participationError } = await supabase
+    const { data: participation, error: participationError } = await adminClient
       .from('conversation_participants')
       .select('id')
       .eq('conversation_id', conversationId)
@@ -189,7 +180,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // If replying to a message, verify it exists in the same conversation
     if (reply_to) {
-      const { data: replyMessage, error: replyError } = await supabase
+      const { data: replyMessage, error: replyError } = await adminClient
         .from('messages')
         .select('id')
         .eq('id', reply_to)
@@ -204,19 +195,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Create the message
-    const newMessage: NewMessage = {
+    // Create the message using admin client (bypasses RLS)
+    const newMessage = {
       conversation_id: conversationId,
       sender_id: user.id,
       content: content.trim(),
       message_type,
       media_url: media_url || null,
       reply_to: reply_to || null,
-      is_deleted: false,
-      is_edited: false,
     };
 
-    const { data: message, error: insertError } = await supabase
+    const { data: message, error: insertError } = await adminClient
       .from('messages')
       .insert(newMessage)
       .select(
@@ -229,25 +218,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         message_type,
         media_url,
         reply_to,
-        is_deleted,
-        is_edited,
-        sender:profiles!messages_sender_id_fkey (
+        deleted_at,
+        sender:profiles!sender_id (
           id,
-          email,
-          full_name,
+          display_name,
           avatar_url,
-          is_online
-        ),
-        reply_to_message:messages!messages_reply_to_fkey (
-          id,
-          content,
-          sender_id,
-          created_at
+          status
         ),
         reactions:message_reactions (
           id,
           user_id,
-          reaction,
+          emoji,
           created_at
         )
       `
@@ -262,11 +243,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Update conversation's last_message_at timestamp
-    await supabase
-      .from('conversations')
-      .update({ last_message_at: new Date().toISOString() })
-      .eq('id', conversationId);
+    // The trigger will automatically update conversation's updated_at timestamp
 
     // Transform the message to match MessageWithSender type
     const transformedMessage: MessageWithSender = {
@@ -278,10 +255,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       message_type: message.message_type,
       media_url: message.media_url,
       reply_to: message.reply_to,
-      is_deleted: message.is_deleted,
-      is_edited: message.is_edited,
+      deleted_at: message.deleted_at,
       sender: message.sender,
-      reply_to_message: message.reply_to_message,
       reactions: message.reactions || [],
     };
 

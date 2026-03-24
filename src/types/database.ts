@@ -95,7 +95,6 @@ export interface Database {
           pinned: boolean
           archived: boolean
           joined_at: string
-          role: string | null
         }
         Insert: {
           id?: string
@@ -106,7 +105,6 @@ export interface Database {
           pinned?: boolean
           archived?: boolean
           joined_at?: string
-          role?: string
         }
         Update: {
           id?: string
@@ -117,7 +115,6 @@ export interface Database {
           pinned?: boolean
           archived?: boolean
           joined_at?: string
-          role?: string
         }
         Relationships: [
           {
@@ -441,7 +438,6 @@ export type UpdateContact = Database['public']['Tables']['contacts']['Update']
 // Message with related data for API responses
 export interface MessageWithSender extends Message {
   sender: Profile | null
-  reply_to_message: Message | null
   reactions: MessageReaction[]
 }
 

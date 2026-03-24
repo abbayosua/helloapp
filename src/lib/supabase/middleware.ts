@@ -46,11 +46,12 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Protected routes - redirect to login if not authenticated
+  // Skip API routes - they return their own 401 responses
   if (
     !user &&
     !request.nextUrl.pathname.startsWith('/login') &&
     !request.nextUrl.pathname.startsWith('/register') &&
-    !request.nextUrl.pathname.startsWith('/api/auth') &&
+    !request.nextUrl.pathname.startsWith('/api/') &&
     !request.nextUrl.pathname.startsWith('/_next') &&
     !request.nextUrl.pathname.includes('.') // static files
   ) {

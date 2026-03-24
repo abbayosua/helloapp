@@ -98,21 +98,27 @@ test.describe('Phase 2: Messaging', () => {
       expect(page.url()).toContain('/');
     });
 
-    test('should login an existing user', async ({ page, context }) => {
+    test('should login an existing user', async ({ page, browser }) => {
       // First register via API
-      const user = await registerUserAPI(context, 'login');
+      const user = await registerUserAPI(await browser.newContext(), 'login');
+      
+      // Use a fresh page without auth cookies to test login
+      const freshContext = await browser.newContext();
+      const freshPage = await freshContext.newPage();
       
       // Navigate to login page
-      await page.goto('/login');
+      await freshPage.goto('/login');
       
       // Fill login form
-      await page.getByLabel(/email/i).fill(user.email);
-      await page.getByLabel(/password/i).fill(user.password);
-      await page.getByRole('button', { name: /sign in/i }).click();
+      await freshPage.getByLabel(/email/i).fill(user.email);
+      await freshPage.getByLabel(/password/i).fill(user.password);
+      await freshPage.getByRole('button', { name: /sign in/i }).click();
       
       // Should redirect to home
-      await page.waitForURL('/', { timeout: 15000 });
-      expect(page.url()).toContain('/');
+      await freshPage.waitForURL('/', { timeout: 15000 });
+      expect(freshPage.url()).toContain('/');
+      
+      await freshContext.close();
     });
   });
 

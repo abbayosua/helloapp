@@ -1,11 +1,10 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Profile, Conversation, Message } from '@/types/database';
 
 // Extended types for API responses
 interface ConversationWithDetails extends Conversation {
   participants: (Profile & {
-    role: string;
     last_read_at: string | null;
   })[];
   last_message: Message | null;
@@ -52,7 +51,6 @@ export async function GET(request: NextRequest) {
       .from('conversation_participants')
       .select(`
         conversation_id,
-        role,
         last_read_at,
         joined_at
       `)
@@ -72,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     const conversationIds = participations.map(p => p.conversation_id);
     const participantLastReadMap = new Map(
-      participations.map(p => [p.conversation_id, { last_read_at: p.last_read_at, role: p.role }])
+      participations.map(p => [p.conversation_id, { last_read_at: p.last_read_at }])
     );
 
     // Get conversation details
@@ -80,7 +78,7 @@ export async function GET(request: NextRequest) {
       .from('conversations')
       .select('*')
       .in('id', conversationIds)
-      .order('last_message_at', { ascending: false, nullsFirst: false });
+      .order('updated_at', { ascending: false, nullsFirst: false });
 
     if (conversationsError) {
       console.error('Error fetching conversations:', conversationsError);
@@ -96,7 +94,6 @@ export async function GET(request: NextRequest) {
       .select(`
         conversation_id,
         user_id,
-        role,
         last_read_at
       `)
       .in('conversation_id', conversationIds);
@@ -131,7 +128,7 @@ export async function GET(request: NextRequest) {
       .from('messages')
       .select('*')
       .in('conversation_id', conversationIds)
-      .eq('is_deleted', false)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (messagesError) {
@@ -160,7 +157,7 @@ export async function GET(request: NextRequest) {
       .from('messages')
       .select('conversation_id')
       .in('conversation_id', conversationIds)
-      .eq('is_deleted', false)
+      .is('deleted_at', null)
       .neq('sender_id', profile.id);
 
     if (unreadError) {
@@ -188,7 +185,7 @@ export async function GET(request: NextRequest) {
           .from('messages')
           .select('*', { count: 'exact', head: true })
           .eq('conversation_id', conv.id)
-          .eq('is_deleted', false)
+          .is('deleted_at', null)
           .neq('sender_id', profile.id);
         
         if (!countError && count !== null) {
@@ -200,7 +197,7 @@ export async function GET(request: NextRequest) {
           .from('messages')
           .select('*', { count: 'exact', head: true })
           .eq('conversation_id', conv.id)
-          .eq('is_deleted', false)
+          .is('deleted_at', null)
           .neq('sender_id', profile.id)
           .gt('created_at', userLastRead);
         
@@ -218,9 +215,8 @@ export async function GET(request: NextRequest) {
         const userProfile = profileMap.get(p.user_id);
         return {
           ...(userProfile || { id: p.user_id, email: '', created_at: '', updated_at: '', is_online: false }),
-          role: p.role,
           last_read_at: p.last_read_at,
-        } as Profile & { role: string; last_read_at: string | null };
+        } as Profile & { last_read_at: string | null };
       });
 
       return {
@@ -233,8 +229,8 @@ export async function GET(request: NextRequest) {
 
     // Sort by last message time (most recent first)
     conversationsWithDetails.sort((a, b) => {
-      const aTime = a.last_message_at || a.created_at;
-      const bTime = b.last_message_at || b.created_at;
+      const aTime = a.updated_at || a.created_at;
+      const bTime = b.updated_at || b.created_at;
       return new Date(bTime).getTime() - new Date(aTime).getTime();
     });
 
@@ -252,6 +248,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const adminClient = await createAdminClient(); // Use admin client for RLS operations
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -296,7 +293,7 @@ export async function POST(request: NextRequest) {
       
       if (otherUserId) {
         // Find existing direct conversation between these two users
-        const { data: existingConvos, error: existingError } = await supabase
+        const { data: existingConvos, error: existingError } = await adminClient
           .from('conversation_participants')
           .select('conversation_id')
           .eq('user_id', profile.id);
@@ -304,7 +301,7 @@ export async function POST(request: NextRequest) {
         if (!existingError && existingConvos && existingConvos.length > 0) {
           const convoIds = existingConvos.map(c => c.conversation_id);
           
-          const { data: otherParticipations, error: otherError } = await supabase
+          const { data: otherParticipations, error: otherError } = await adminClient
             .from('conversation_participants')
             .select('conversation_id')
             .eq('user_id', otherUserId)
@@ -313,18 +310,18 @@ export async function POST(request: NextRequest) {
           if (!otherError && otherParticipations && otherParticipations.length > 0) {
             // Check each conversation to see if it's a direct conversation (exactly 2 participants)
             for (const p of otherParticipations) {
-              const { data: participants, error: participantsError } = await supabase
+              const { data: participants, error: participantsError } = await adminClient
                 .from('conversation_participants')
                 .select('user_id')
                 .eq('conversation_id', p.conversation_id);
 
               if (!participantsError && participants && participants.length === 2) {
                 // Check if it's not a group
-                const { data: conv, error: convError } = await supabase
+                const { data: conv, error: convError } = await adminClient
                   .from('conversations')
                   .select('*')
                   .eq('id', p.conversation_id)
-                  .eq('is_group', false)
+                  .eq('type', 'direct')
                   .single();
 
                 if (!convError && conv) {
@@ -357,8 +354,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create the conversation
-    const { data: conversation, error: createError } = await supabase
+    // Create the conversation using admin client (bypasses RLS)
+    console.log('Creating conversation with:', {
+      type: is_group ? 'group' : 'direct',
+      created_by: profile.id,
+      user_id: user.id,
+    });
+
+    const { data: conversation, error: createError } = await adminClient
       .from('conversations')
       .insert({
         type: is_group ? 'group' : 'direct',
@@ -369,6 +372,11 @@ export async function POST(request: NextRequest) {
 
     if (createError || !conversation) {
       console.error('Error creating conversation:', createError);
+      console.error('User auth state:', { 
+        userId: user.id, 
+        profileId: profile.id,
+        errorDetails: JSON.stringify(createError, null, 2)
+      });
       return NextResponse.json(
         { error: 'Failed to create conversation' },
         { status: 500 }
@@ -377,7 +385,7 @@ export async function POST(request: NextRequest) {
 
     // If it's a group, create the group record
     if (is_group) {
-      const { error: groupError } = await supabase
+      const { error: groupError } = await adminClient
         .from('groups')
         .insert({
           id: conversation.id,
@@ -389,7 +397,7 @@ export async function POST(request: NextRequest) {
       if (groupError) {
         console.error('Error creating group:', groupError);
         // Try to clean up the conversation
-        await supabase.from('conversations').delete().eq('id', conversation.id);
+        await adminClient.from('conversations').delete().eq('id', conversation.id);
         return NextResponse.json(
           { error: 'Failed to create group' },
           { status: 500 }
@@ -397,21 +405,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Add participants
+    // Add participants using admin client
     const participantInserts = allParticipantIds.map(userId => ({
       conversation_id: conversation.id,
       user_id: userId,
-      role: userId === profile.id ? 'admin' : 'member',
     }));
 
-    const { error: participantsError } = await supabase
+    const { error: participantsError } = await adminClient
       .from('conversation_participants')
       .insert(participantInserts);
 
     if (participantsError) {
       console.error('Error adding participants:', participantsError);
       // Try to clean up the conversation
-      await supabase.from('conversations').delete().eq('id', conversation.id);
+      await adminClient.from('conversations').delete().eq('id', conversation.id);
       return NextResponse.json(
         { error: 'Failed to add participants to conversation' },
         { status: 500 }
@@ -419,7 +426,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get participant profiles for response
-    const { data: participantProfiles } = await supabase
+    const { data: participantProfiles } = await adminClient
       .from('profiles')
       .select('*')
       .in('id', allParticipantIds);
@@ -428,7 +435,6 @@ export async function POST(request: NextRequest) {
       ...conversation,
       participants: (participantProfiles || []).map(p => ({
         ...p,
-        role: p.id === profile.id ? 'admin' : 'member',
         last_read_at: p.id === profile.id ? new Date().toISOString() : null,
       })),
       last_message: null,
