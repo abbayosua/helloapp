@@ -7,8 +7,11 @@ import { ChatHeader } from '@/components/organisms/chat-header';
 import { MessageList } from '@/components/organisms/message-list';
 import { MessageInput } from '@/components/organisms/message-input';
 import { NewChatDialog } from '@/components/organisms/new-chat-dialog';
-import { Loader2 } from 'lucide-react';
+import { SearchDialog } from '@/components/organisms/search-dialog';
+import { Loader2, Search } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { usePresence } from '@/hooks/use-presence';
+import { Button } from '@/components/atoms/button';
 
 interface Profile {
   id: string;
@@ -29,13 +32,28 @@ interface Conversation {
   partner_status?: string;
 }
 
+interface ReplyToMessage {
+  id: string;
+  content: string;
+  sender_name: string;
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<Profile | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState<ReplyToMessage | null>(null);
+
+  // Presence tracking
+  usePresence({
+    userId: user?.id || '',
+    conversationId: selectedConversation?.id,
+    enabled: !!user,
+  });
 
   const loadUser = useCallback(async () => {
     try {
@@ -71,6 +89,7 @@ export default function HomePage() {
         const data = await response.json();
         setSelectedConversation(data.conversation);
         setIsMobileChatOpen(true);
+        setReplyTo(null); // Clear reply when switching conversations
       }
     } catch (error) {
       console.error('Failed to load conversation:', error);
@@ -79,6 +98,20 @@ export default function HomePage() {
 
   const handleNewConversation = (conversationId: string) => {
     handleSelectConversation(conversationId);
+  };
+
+  const handleReply = (message: ReplyToMessage) => {
+    setReplyTo(message);
+  };
+
+  const handleCancelReply = () => {
+    setReplyTo(null);
+  };
+
+  const handleMessageFound = (messageId: string) => {
+    // Scroll to message in the message list
+    console.log('Found message:', messageId);
+    // The MessageList component will handle the scrolling
   };
 
   if (isLoading) {
@@ -118,22 +151,43 @@ export default function HomePage() {
               status={selectedConversation.partner_status}
               isGroup={selectedConversation.type === 'group'}
               onBack={() => setIsMobileChatOpen(false)}
+              actions={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-gray-500"
+                  onClick={() => setShowSearch(true)}
+                >
+                  <Search className="h-5 w-5" />
+                </Button>
+              }
             />
             <MessageList
               conversationId={selectedConversation.id}
               currentUserId={user.id}
+              onReply={handleReply}
             />
             <MessageInput
               conversationId={selectedConversation.id}
               userId={user.id}
+              replyTo={replyTo}
+              onCancelReply={handleCancelReply}
             />
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center bg-[#EFEAE2] dark:bg-[#0B141A] text-gray-500">
             <div className="w-64 h-64 mb-8 opacity-20">
-              <svg viewBox="0 0 303 172" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                <path d="M229.565 160.229C262.212 149.245 286.931 118.241 283.39 73.4194C278.009 5.31929 212.365 -23.6605 142.548 22.5194C72.7314 68.6993 6.93409 81.5402 1.36702 134.59C-4.20005 187.64 57.1875 198.437 93.8579 182.935C130.528 167.434 102.98 120.732 142.548 97.8848C182.116 75.0378 229.565 118.241 229.565 160.229Z" fill="currentColor"/>
-                <ellipse cx="138" cy="60" rx="46" ry="36" fill="currentColor" opacity="0.5"/>
+              <svg
+                viewBox="0 0 303 172"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-full h-full"
+              >
+                <path
+                  d="M229.565 160.229C262.212 149.245 286.931 118.241 283.39 73.4194C278.009 5.31929 212.365 -23.6605 142.548 22.5194C72.7314 68.6993 6.93409 81.5402 1.36702 134.59C-4.20005 187.64 57.1875 198.437 93.8579 182.935C130.528 167.434 102.98 120.732 142.548 97.8848C182.116 75.0378 229.565 118.241 229.565 160.229Z"
+                  fill="currentColor"
+                />
+                <ellipse cx="138" cy="60" rx="46" ry="36" fill="currentColor" opacity="0.5" />
               </svg>
             </div>
             <h2 className="text-2xl font-light text-gray-700 dark:text-gray-300 mb-2">
@@ -158,6 +212,16 @@ export default function HomePage() {
         onClose={() => setShowNewChat(false)}
         onConversationCreated={handleNewConversation}
       />
+
+      {/* Search Dialog */}
+      {selectedConversation && (
+        <SearchDialog
+          isOpen={showSearch}
+          onClose={() => setShowSearch(false)}
+          conversationId={selectedConversation.id}
+          onMessageClick={handleMessageFound}
+        />
+      )}
     </div>
   );
 }

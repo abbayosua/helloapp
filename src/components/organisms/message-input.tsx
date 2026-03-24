@@ -2,12 +2,31 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/atoms/button';
-import { Smile, Paperclip, Mic, Send, X, ImageIcon, FileText, MapPin, User } from 'lucide-react';
+import { ReplyPreview } from '@/components/molecules/reply-preview';
+import {
+  Smile,
+  Paperclip,
+  Mic,
+  Send,
+  X,
+  ImageIcon,
+  FileText,
+  MapPin,
+  User,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+
+interface ReplyToMessage {
+  id: string;
+  content: string;
+  sender_name: string;
+}
 
 interface MessageInputProps {
   conversationId: string;
   userId: string;
+  replyTo?: ReplyToMessage | null;
+  onCancelReply?: () => void;
   onMessageSent?: () => void;
   disabled?: boolean;
 }
@@ -15,6 +34,8 @@ interface MessageInputProps {
 export function MessageInput({
   conversationId,
   userId,
+  replyTo,
+  onCancelReply,
   onMessageSent,
   disabled = false,
 }: MessageInputProps) {
@@ -27,14 +48,19 @@ export function MessageInput({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Broadcast typing status
-  const broadcastTyping = useCallback((typing: boolean) => {
-    const supabase = createClient();
-    supabase.channel(`typing:${conversationId}`).send({
-      type: 'broadcast',
-      event: 'typing',
-      payload: { user_id: userId, isTyping: typing },
-    });
-  }, [conversationId, userId]);
+  const broadcastTyping = useCallback(
+    (typing: boolean) => {
+      const supabase = createClient();
+      supabase
+        .channel(`typing:${conversationId}`)
+        .send({
+          type: 'broadcast',
+          event: 'typing',
+          payload: { user_id: userId, isTyping: typing },
+        });
+    },
+    [conversationId, userId]
+  );
 
   const handleTyping = () => {
     if (!isTyping) {
@@ -62,14 +88,21 @@ export function MessageInput({
     broadcastTyping(false);
 
     try {
-      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: message.trim() }),
-      });
+      const response = await fetch(
+        `/api/conversations/${conversationId}/messages`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: message.trim(),
+            reply_to: replyTo?.id || null,
+          }),
+        }
+      );
 
       if (response.ok) {
         setMessage('');
+        onCancelReply?.();
         onMessageSent?.();
       }
     } catch (error) {
@@ -91,28 +124,53 @@ export function MessageInput({
 
   return (
     <div className="px-2 md:px-4 py-2 md:py-3 bg-[#F0F2F5] dark:bg-[#202C33]">
+      {/* Reply preview */}
+      {replyTo && (
+        <ReplyPreview
+          content={replyTo.content}
+          senderName={replyTo.sender_name}
+          onClose={() => onCancelReply?.()}
+        />
+      )}
+
       {/* Attachment menu */}
       {showAttachments && (
         <div className="flex gap-2 mb-2 p-2 bg-white dark:bg-gray-800 rounded-lg shadow">
-          <Button variant="ghost" size="sm" className="flex-col gap-1 h-auto py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-col gap-1 h-auto py-2"
+          >
             <ImageIcon className="h-5 w-5 text-purple-500" />
             <span className="text-xs">Photo</span>
           </Button>
-          <Button variant="ghost" size="sm" className="flex-col gap-1 h-auto py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-col gap-1 h-auto py-2"
+          >
             <FileText className="h-5 w-5 text-blue-500" />
             <span className="text-xs">Document</span>
           </Button>
-          <Button variant="ghost" size="sm" className="flex-col gap-1 h-auto py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-col gap-1 h-auto py-2"
+          >
             <MapPin className="h-5 w-5 text-green-500" />
             <span className="text-xs">Location</span>
           </Button>
-          <Button variant="ghost" size="sm" className="flex-col gap-1 h-auto py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-col gap-1 h-auto py-2"
+          >
             <User className="h-5 w-5 text-orange-500" />
             <span className="text-xs">Contact</span>
           </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className="ml-auto"
             onClick={() => setShowAttachments(false)}
           >
@@ -136,9 +194,9 @@ export function MessageInput({
               {emoji}
             </button>
           ))}
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className="ml-auto"
             onClick={() => setShowEmojiPicker(false)}
           >

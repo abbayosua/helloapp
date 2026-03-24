@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import type { NewMessageReaction } from '@/types/database';
 
@@ -14,6 +14,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: messageId } = await params;
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
 
     // Check authentication
     const {
@@ -26,13 +27,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get the message
-    const { data: message, error: fetchError } = await supabase
+    const { data: message, error: fetchError } = await adminClient
       .from('messages')
       .select(
         `
         id,
         conversation_id,
-        is_deleted
+        deleted_at
       `
       )
       .eq('id', messageId)
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if message is deleted
-    if (message.is_deleted) {
+    if (message.deleted_at) {
       return NextResponse.json(
         { error: 'Cannot react to deleted message' },
         { status: 400 }
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if user is a participant in this conversation
-    const { data: participation, error: participationError } = await supabase
+    const { data: participation, error: participationError } = await adminClient
       .from('conversation_participants')
       .select('id')
       .eq('conversation_id', message.conversation_id)
@@ -85,17 +86,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if user already has a reaction on this message
-    const { data: existingReaction } = await supabase
+    const { data: existingReaction } = await adminClient
       .from('message_reactions')
-      .select('id, reaction')
+      .select('id, emoji')
       .eq('message_id', messageId)
       .eq('user_id', user.id)
       .single();
 
     if (existingReaction) {
       // If same reaction, remove it (toggle off)
-      if (existingReaction.reaction === reaction) {
-        const { error: deleteError } = await supabase
+      if (existingReaction.emoji === reaction) {
+        const { error: deleteError } = await adminClient
           .from('message_reactions')
           .delete()
           .eq('id', existingReaction.id);
@@ -116,9 +117,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
 
       // If different reaction, update it
-      const { error: updateError } = await supabase
+      const { error: updateError } = await adminClient
         .from('message_reactions')
-        .update({ reaction })
+        .update({ emoji: reaction })
         .eq('id', existingReaction.id);
 
       if (updateError) {
@@ -133,7 +134,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         success: true,
         action: 'updated',
         message: 'Reaction updated',
-        reaction: { user_id: user.id, reaction },
+        reaction: { user_id: user.id, emoji: reaction },
       });
     }
 
@@ -141,13 +142,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const newReaction: NewMessageReaction = {
       message_id: messageId,
       user_id: user.id,
-      reaction,
+      emoji: reaction,
     };
 
-    const { data: insertedReaction, error: insertError } = await supabase
+    const { data: insertedReaction, error: insertError } = await adminClient
       .from('message_reactions')
       .insert(newReaction)
-      .select('id, user_id, reaction, created_at')
+      .select('id, user_id, emoji, created_at')
       .single();
 
     if (insertError) {
@@ -178,6 +179,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: messageId } = await params;
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
 
     // Check authentication
     const {
@@ -194,7 +196,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const reaction = searchParams.get('reaction');
 
     // Build the delete query
-    let query = supabase
+    let query = adminClient
       .from('message_reactions')
       .delete()
       .eq('message_id', messageId)
@@ -202,7 +204,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // If specific reaction provided, only delete that one
     if (reaction) {
-      query = query.eq('reaction', reaction);
+      query = query.eq('emoji', reaction);
     }
 
     const { error: deleteError } = await query;
@@ -233,6 +235,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: messageId } = await params;
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
 
     // Check authentication
     const {
@@ -245,7 +248,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get the message to verify access
-    const { data: message, error: fetchError } = await supabase
+    const { data: message, error: fetchError } = await adminClient
       .from('messages')
       .select(
         `
@@ -261,7 +264,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if user is a participant in this conversation
-    const { data: participation, error: participationError } = await supabase
+    const { data: participation, error: participationError } = await adminClient
       .from('conversation_participants')
       .select('id')
       .eq('conversation_id', message.conversation_id)
@@ -276,19 +279,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get all reactions for the message
-    const { data: reactions, error: reactionsError } = await supabase
+    const { data: reactions, error: reactionsError } = await adminClient
       .from('message_reactions')
       .select(
         `
         id,
         user_id,
-        reaction,
-        created_at,
-        user:profiles (
-          id,
-          full_name,
-          avatar_url
-        )
+        emoji,
+        created_at
       `
       )
       .eq('message_id', messageId)
@@ -302,19 +300,31 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Get user profiles for reactions
+    const userIds = [...new Set(reactions?.map(r => r.user_id) || [])];
+    const { data: profiles } = userIds.length > 0 
+      ? await adminClient
+          .from('profiles')
+          .select('id, display_name, avatar_url')
+          .in('id', userIds)
+      : { data: [] };
+
+    const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+
     // Group reactions by emoji
     const groupedReactions = (reactions || []).reduce<
       Record<string, { count: number; users: Array<{ id: string; name: string | null; avatar_url: string | null }> }>
     >((acc, reaction) => {
-      const emoji = reaction.reaction;
+      const emoji = reaction.emoji;
       if (!acc[emoji]) {
         acc[emoji] = { count: 0, users: [] };
       }
       acc[emoji].count += 1;
+      const userProfile = profileMap.get(reaction.user_id);
       acc[emoji].users.push({
         id: reaction.user_id,
-        name: reaction.user?.full_name || null,
-        avatar_url: reaction.user?.avatar_url || null,
+        name: userProfile?.display_name || null,
+        avatar_url: userProfile?.avatar_url || null,
       });
       return acc;
     }, {});
