@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Contact type for responses
@@ -22,6 +22,7 @@ interface ContactWithProfile {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -36,9 +37,10 @@ export async function GET(request: NextRequest) {
     // Get query params
     const { searchParams } = new URL(request.url);
     const includeBlocked = searchParams.get('blocked') === 'true';
+    const blockedOnly = searchParams.get('blocked_only') === 'true';
 
     // Get contacts with profile information
-    const { data: contacts, error } = await supabase
+    const { data: contacts, error } = await adminClient
       .from('contacts')
       .select(`
         id,
@@ -59,9 +61,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Filter blocked contacts if needed
+    // Filter contacts based on params
     let filteredContacts = contacts || [];
-    if (!includeBlocked) {
+    if (blockedOnly) {
+      filteredContacts = filteredContacts.filter(c => c.is_blocked);
+    } else if (!includeBlocked) {
       filteredContacts = filteredContacts.filter(c => !c.is_blocked);
     }
 
@@ -69,9 +73,9 @@ export async function GET(request: NextRequest) {
     const phoneNumbers = filteredContacts.map(c => c.phone).filter(Boolean);
 
     let profilesByPhone: Record<string, ContactWithProfile['profile']> = {};
-    
+
     if (phoneNumbers.length > 0) {
-      const { data: profiles } = await supabase
+      const { data: profiles } = await adminClient
         .from('profiles')
         .select('id, display_name, avatar_url, phone, status, last_seen')
         .in('phone', phoneNumbers);
@@ -110,10 +114,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Add a new contact
+// POST - Add a new contact or sync contacts
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -126,6 +131,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+
+    // Check if this is a bulk sync request
+    if (Array.isArray(body.contacts)) {
+      return await syncContacts(user.id, body.contacts, adminClient);
+    }
+
+    // Single contact add
     const { phone, name } = body;
 
     // Validate phone
@@ -137,7 +149,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if contact already exists
-    const { data: existingContact } = await supabase
+    const { data: existingContact } = await adminClient
       .from('contacts')
       .select('id, is_blocked')
       .eq('owner_id', user.id)
@@ -147,7 +159,7 @@ export async function POST(request: NextRequest) {
     if (existingContact) {
       // If blocked, unblock it
       if (existingContact.is_blocked) {
-        const { data: updatedContact, error } = await supabase
+        const { data: updatedContact, error } = await adminClient
           .from('contacts')
           .update({ is_blocked: false, name: name || null })
           .eq('id', existingContact.id)
@@ -176,7 +188,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Add new contact
-    const { data: newContact, error } = await supabase
+    const { data: newContact, error } = await adminClient
       .from('contacts')
       .insert({
         owner_id: user.id,
@@ -196,7 +208,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Try to get profile info for this phone number
-    const { data: profile } = await supabase
+    const { data: profile } = await adminClient
       .from('profiles')
       .select('id, display_name, avatar_url, phone, status, last_seen')
       .eq('phone', phone)
@@ -218,10 +230,81 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Sync contacts in bulk
+async function syncContacts(
+  userId: string,
+  contacts: Array<{ phone: string; name?: string }>,
+  adminClient: ReturnType<typeof createAdminClient>
+) {
+  const results = {
+    added: 0,
+    updated: 0,
+    total: contacts.length,
+    contacts: [] as ContactWithProfile[],
+  };
+
+  for (const contact of contacts) {
+    if (!contact.phone) continue;
+
+    // Check if contact exists
+    const { data: existingContact } = await adminClient
+      .from('contacts')
+      .select('id, is_blocked')
+      .eq('owner_id', userId)
+      .eq('phone', contact.phone)
+      .single();
+
+    if (existingContact) {
+      // Update name if provided and not blocked
+      if (contact.name && !existingContact.is_blocked) {
+        await adminClient
+          .from('contacts')
+          .update({ name: contact.name })
+          .eq('id', existingContact.id);
+        results.updated++;
+      }
+    } else {
+      // Add new contact
+      const { data: newContact, error } = await adminClient
+        .from('contacts')
+        .insert({
+          owner_id: userId,
+          phone: contact.phone,
+          name: contact.name || null,
+          is_blocked: false,
+        })
+        .select()
+        .single();
+
+      if (!error && newContact) {
+        results.added++;
+
+        // Get profile info
+        const { data: profile } = await adminClient
+          .from('profiles')
+          .select('id, display_name, avatar_url, phone, status, last_seen')
+          .eq('phone', contact.phone)
+          .single();
+
+        results.contacts.push({
+          ...newContact,
+          profile: profile || null,
+        });
+      }
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    ...results,
+  });
+}
+
 // DELETE - Remove/block a contact
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -247,7 +330,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Find the contact
-    let query = supabase
+    let query = adminClient
       .from('contacts')
       .select('id')
       .eq('owner_id', user.id);
@@ -269,7 +352,7 @@ export async function DELETE(request: NextRequest) {
 
     if (block) {
       // Block the contact instead of deleting
-      const { error: blockError } = await supabase
+      const { error: blockError } = await adminClient
         .from('contacts')
         .update({ is_blocked: true })
         .eq('id', contact.id);
@@ -289,7 +372,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete the contact
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await adminClient
       .from('contacts')
       .delete()
       .eq('id', contact.id);
