@@ -1,2 +1,7 @@
 export { LoginForm } from './login-form';
 export { RegisterForm } from './register-form';
+export { Sidebar } from './sidebar';
+export { ChatHeader } from './chat-header';
+export { MessageList } from './message-list';
+export { MessageInput } from './message-input';
+export { NewChatDialog } from './new-chat-dialog';

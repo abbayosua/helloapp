@@ -194,3 +194,216 @@ Successfully created all 10 atom components in `src/components/atoms/`:
 - Removed manual memoization (React Compiler handles this)
 - Fixed conditional hook call in Input component
 - Built on existing shadcn/ui components for consistency
+
+---
+## Task ID: 3 - Users API Routes Creation
+### Work Task
+Create API routes for user operations in HelloApp including user search, profile management, and contacts functionality.
+
+### Work Summary
+Successfully created all 4 Users API routes with comprehensive functionality:
+
+**Files Created:**
+
+1. **`src/app/api/users/search/route.ts`** - Search users
+   - GET: Search users by phone number or display name
+   - Uses case-insensitive search with ILIKE
+   - Excludes current user from results
+   - Returns limited results (max 20)
+   - Query param: `q` (search term)
+
+2. **`src/app/api/users/[id]/route.ts`** - User profile by ID
+   - GET: Get user profile by ID
+   - Returns public profile info (id, display_name, avatar_url, phone, about, status, last_seen)
+   - Includes contact information (is_contact, contact_name, is_blocked) if applicable
+   - Returns 404 for non-existent users
+
+3. **`src/app/api/users/profile/route.ts`** - Current user profile
+   - GET: Get current user's full profile with email
+   - PATCH: Update profile fields (display_name, about, avatar_url, phone)
+   - Validation for all fields (max lengths, types)
+   - Phone uniqueness check before update
+   - Returns updated profile on success
+
+4. **`src/app/api/users/contacts/route.ts`** - User contacts
+   - GET: List user's contacts with profile information
+   - Query param: `blocked=true` to include blocked contacts
+   - POST: Add new contact (auto-unblocks if blocked)
+   - DELETE: Remove or block contact
+   - Query params: `id`, `phone`, `block=true`
+   - Joins contacts with profiles for rich contact data
+
+**Features Implemented:**
+- All routes require authentication via Supabase auth
+- Proper error handling with appropriate HTTP status codes
+- TypeScript types from `@/types/database`
+- Supabase client from `@/lib/supabase/server`
+- Consistent response format across all endpoints
+- Input validation and sanitization
+
+**API Endpoints Summary:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/users/search?q={query} | Search users |
+| GET | /api/users/[id] | Get user profile |
+| GET | /api/users/profile | Get current user profile |
+| PATCH | /api/users/profile | Update current user profile |
+| GET | /api/users/contacts | List contacts |
+| POST | /api/users/contacts | Add contact |
+| DELETE | /api/users/contacts?id={id}&block={bool} | Remove/block contact |
+
+---
+## Task ID: 2 - Messages API Routes Creation
+### Work Task
+Create API routes for messages CRUD operations in HelloApp including paginated message retrieval, message editing, soft deletion, read status, and reactions.
+
+### Work Summary
+Successfully created all 4 Messages API routes with comprehensive functionality:
+
+**Files Created:**
+
+1. **`src/app/api/conversations/[id]/messages/route.ts`** - Messages for a conversation
+   - GET: Get paginated messages with infinite scroll support
+     - Cursor-based pagination using `before` timestamp
+     - Configurable limit (default 50, max 100)
+     - Includes sender profile, reply-to message, and reactions
+     - Filters out deleted messages
+     - Returns `next_cursor` and `has_more` for pagination
+   - POST: Send new message
+     - Supports text content and media URLs
+     - Supports reply_to for message replies
+     - Auto-updates conversation's last_message_at
+     - Returns full message with sender info
+   - Authorization: Verifies user is a participant
+
+2. **`src/app/api/messages/[id]/route.ts`** - Single message operations
+   - PATCH: Edit message content
+     - Only sender can edit their own messages
+     - Cannot edit deleted messages
+     - Sets is_edited flag automatically
+     - Returns updated message with all relations
+   - DELETE: Soft delete message
+     - Sender can delete own messages
+     - Group admins can delete any message in group
+     - Marks message as deleted (is_deleted=true)
+     - Clears content and media_url for privacy
+     - Supports delete_for_everyone flag
+
+3. **`src/app/api/messages/[id]/read/route.ts`** - Mark as read
+   - POST: Mark message as read
+     - Creates or updates message_status record
+     - Updates conversation_participant's last_read_at
+     - Won't mark own messages as read
+     - Returns success status
+
+4. **`src/app/api/messages/[id]/reactions/route.ts`** - Message reactions
+   - POST: Add or toggle reaction
+     - Supports WhatsApp-style emojis: 👍, ❤️, 😂, 😮, 😢, 🙏
+     - Toggles off if same reaction clicked again
+     - Updates if different reaction selected
+     - Returns action type (added/updated/removed)
+   - DELETE: Remove reaction
+     - Optional reaction param to remove specific emoji
+     - Removes user's reaction from message
+   - GET: Get all reactions for message
+     - Returns individual reactions with user details
+     - Returns grouped reactions by emoji with counts
+
+**Database Types Updated:**
+- Added `message_reactions` table type
+- Added `message_status` table type
+- Added `groups`, `group_admins`, `contacts` table types
+- Created `MessageWithSender` interface for API responses
+- Created `PaginatedMessagesResponse` interface for pagination
+
+**Features Implemented:**
+- All routes require authentication via Supabase auth
+- Participant verification for conversation access
+- Proper error handling with appropriate HTTP status codes
+- TypeScript types from `@/types/database`
+- Supabase client from `@/lib/supabase/server`
+- Consistent response format across all endpoints
+- Input validation and sanitization
+- Cursor-based pagination for infinite scroll
+
+**API Endpoints Summary:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/conversations/[id]/messages?before={cursor}&limit={n} | Get paginated messages |
+| POST | /api/conversations/[id]/messages | Send new message |
+| PATCH | /api/messages/[id] | Edit message content |
+| DELETE | /api/messages/[id] | Soft delete message |
+| POST | /api/messages/[id]/read | Mark message as read |
+| GET | /api/messages/[id]/reactions | Get all reactions |
+| POST | /api/messages/[id]/reactions | Add/toggle reaction |
+| DELETE | /api/messages/[id]/reactions?reaction={emoji} | Remove reaction |
+
+---
+## Task ID: 1 - Conversations API Routes Creation
+### Work Task
+Create API routes for conversations CRUD operations in HelloApp including listing, creating, updating, and managing conversations.
+
+### Work Summary
+Successfully created all 3 Conversations API route files with comprehensive functionality:
+
+**Files Created:**
+
+1. **`src/app/api/conversations/route.ts`** - List and create conversations
+   - **GET**: List all conversations for authenticated user
+     - Returns conversations with participants, last message, and unread count
+     - Sorted by last message time (most recent first)
+     - Includes participant profiles with role and last_read_at
+   - **POST**: Create new conversation (direct or group)
+     - For direct messages: checks if conversation already exists between users
+     - For groups: requires name and at least 3 participants
+     - Returns existing conversation if found (direct messages only)
+     - Creator is automatically set as admin
+
+2. **`src/app/api/conversations/[id]/route.ts`** - Single conversation operations
+   - **GET**: Get conversation details with participants
+     - Returns full conversation data with participant profiles
+     - Includes last message and unread count
+     - Shows user's role in the conversation
+   - **PATCH**: Update conversation settings
+     - Only admins can update group name and avatar
+     - Validates user is participant before updating
+   - **DELETE**: Leave or delete conversation
+     - For groups: removes user from participants (transfers admin if needed)
+     - For direct messages or last participant: deletes entire conversation
+     - Cleans up messages when deleting conversation
+
+3. **`src/app/api/conversations/[id]/participants/route.ts`** - Manage participants
+   - **GET**: List all participants in a conversation
+     - Returns participant profiles with role, joined_at, and last_read_at
+     - Sorted by join date (earliest first)
+   - **POST**: Add participants to group
+     - Only admins can add participants
+     - Validates users exist in database
+     - Prevents adding duplicate participants
+     - Returns list of added participants with profiles
+
+**Features Implemented:**
+- All routes require authentication via Supabase auth
+- Proper authorization checks (participant verification, admin-only actions)
+- Comprehensive error handling with appropriate HTTP status codes
+- TypeScript types from `@/types/database`
+- Supabase client from `@/lib/supabase/server`
+- Efficient queries with proper joins and aggregations
+- Unread count calculation based on last_read_at timestamp
+
+**API Endpoints Summary:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/conversations | List user's conversations |
+| POST | /api/conversations | Create new conversation |
+| GET | /api/conversations/[id] | Get conversation details |
+| PATCH | /api/conversations/[id] | Update conversation |
+| DELETE | /api/conversations/[id] | Leave/delete conversation |
+| GET | /api/conversations/[id]/participants | List participants |
+| POST | /api/conversations/[id]/participants | Add participants |
+
+**Business Logic:**
+- Direct conversations (is_group=false): Only 2 participants, reuses existing conversation
+- Group conversations (is_group=true): 3+ participants, requires name
+- Admin role: Required for adding participants and updating group settings
+- Auto-transfer admin role when admin leaves group
