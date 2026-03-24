@@ -361,9 +361,7 @@ export async function POST(request: NextRequest) {
     const { data: conversation, error: createError } = await supabase
       .from('conversations')
       .insert({
-        is_group,
-        name: is_group ? name : null,
-        avatar_url: is_group ? avatar_url : null,
+        type: is_group ? 'group' : 'direct',
         created_by: profile.id,
       })
       .select()
@@ -375,6 +373,28 @@ export async function POST(request: NextRequest) {
         { error: 'Failed to create conversation' },
         { status: 500 }
       );
+    }
+
+    // If it's a group, create the group record
+    if (is_group) {
+      const { error: groupError } = await supabase
+        .from('groups')
+        .insert({
+          id: conversation.id,
+          name: name!,
+          avatar_url,
+          created_by: profile.id,
+        });
+
+      if (groupError) {
+        console.error('Error creating group:', groupError);
+        // Try to clean up the conversation
+        await supabase.from('conversations').delete().eq('id', conversation.id);
+        return NextResponse.json(
+          { error: 'Failed to create group' },
+          { status: 500 }
+        );
+      }
     }
 
     // Add participants

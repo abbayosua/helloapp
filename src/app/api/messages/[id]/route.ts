@@ -167,7 +167,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         conversation_id,
         is_deleted,
         conversation:conversations (
-          is_group,
+          type,
           created_by
         )
       `
@@ -193,7 +193,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const isSender = message.sender_id === user.id;
     let isAdmin = false;
 
-    if (!isSender && message.conversation?.is_group) {
+    if (!isSender && message.conversation?.type === 'group') {
       // Check if user is a group admin
       const { data: adminCheck } = await supabase
         .from('group_admins')

@@ -188,7 +188,7 @@ export async function POST(
     }
 
     // Verify it's a group conversation
-    if (!conversation.is_group) {
+    if (conversation.type !== 'group') {
       return NextResponse.json(
         { error: 'Cannot add participants to direct conversations' },
         { status: 400 }

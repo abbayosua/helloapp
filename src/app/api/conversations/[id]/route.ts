@@ -250,7 +250,7 @@ export async function PATCH(
     }
 
     // Only admins can update group settings
-    if (conversation.is_group && (name !== undefined || avatar_url !== undefined)) {
+    if (conversation.type === 'group' && (name !== undefined || avatar_url !== undefined)) {
       if (participant?.role !== 'admin') {
         return NextResponse.json(
           { error: 'Only admins can update group settings' },
@@ -258,21 +258,21 @@ export async function PATCH(
         );
       }
 
-      // Update conversation
+      // Update group record
       const updateData: { name?: string; avatar_url?: string | null } = {};
       if (name !== undefined) updateData.name = name;
       if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
 
       if (Object.keys(updateData).length > 0) {
         const { error: updateError } = await supabase
-          .from('conversations')
+          .from('groups')
           .update(updateData)
           .eq('id', conversationId);
 
         if (updateError) {
-          console.error('Error updating conversation:', updateError);
+          console.error('Error updating group:', updateError);
           return NextResponse.json(
-            { error: 'Failed to update conversation' },
+            { error: 'Failed to update group' },
             { status: 500 }
           );
         }
@@ -382,7 +382,7 @@ export async function DELETE(
     }
 
     // If this is the last participant or it's a direct conversation, delete the whole conversation
-    if ((participantCount || 0) <= 1 || !conversation.is_group) {
+    if ((participantCount || 0) <= 1 || conversation.type === 'direct') {
       // Delete all messages first
       const { error: deleteMessagesError } = await supabase
         .from('messages')
