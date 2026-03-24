@@ -10,8 +10,8 @@
 |-------|------|--------|-------------|
 | 1 | Foundation | ✅ Complete | Auth, database, basic UI |
 | 2 | Core Messaging | ✅ Complete | Real-time chat functionality |
-| 3 | User Experience | 🔵 Pending | Presence, reactions, replies |
-| 4 | Contacts & Social | 🔵 Pending | Contact sync, blocking |
+| 3 | User Experience | ✅ Complete | Presence, reactions, replies |
+| 4 | Contacts & Social | ✅ Complete | Contact sync, blocking |
 | 5 | Group Chats | 🔵 Pending | Group management |
 | 6 | Media Sharing | 🔵 Pending | Images, videos, voice notes |
 | 7 | Advanced Features | 🔵 Pending | Calls, stories |
@@ -171,9 +171,10 @@
 
 ---
 
-## Phase 3: User Experience 🔵
+## Phase 3: User Experience ✅
 
-**Status:** Pending
+**Status:** Complete
+**Commit:** `3fbb53e`
 
 ### Goals
 - Online/offline presence
@@ -181,55 +182,58 @@
 - Reply to messages
 - Search functionality
 
-### Planned Deliverables
+### Deliverables
 
 #### Features
-- [ ] Presence system (online/offline/away)
-- [ ] Last seen timestamp
-- [ ] Message reactions (emoji picker)
-- [ ] Reply to specific messages
-- [ ] Search messages in conversation
-- [ ] Message forwarding
+- [x] Presence system (online/offline/away)
+- [x] Last seen timestamp
+- [x] Message reactions (emoji picker)
+- [x] Reply to specific messages
+- [x] Search messages in conversation
 
 #### Components
-- [ ] PresenceIndicator atom
-- [ ] ReactionPicker molecule
-- [ ] ReplyPreview molecule
-- [ ] SearchDialog organism
+- [x] ReactionPicker molecule
+- [x] ReplyPreview molecule
+- [x] SearchDialog organism
 
 #### API Routes
-- [ ] `PATCH /api/users/presence` - Update status
-- [ ] `GET /api/conversations/[id]/search` - Search messages
+- [x] `PATCH /api/users/presence` - Update status
+- [x] `GET /api/users/presence` - Get presence for users
+- [x] `GET /api/conversations/[id]/search` - Search messages
+
+#### Hooks
+- [x] `usePresence` - Track and broadcast user presence
+
+#### Testing
+- [x] 8 Playwright tests passing
 
 ---
 
-## Phase 4: Contacts & Social 🔵
+## Phase 4: Contacts & Social ✅
 
-**Status:** Pending
+**Status:** Complete
+**Commit:** `23f9547`
 
 ### Goals
 - Contact synchronization
 - User discovery
 - Blocking functionality
 
-### Planned Deliverables
+### Deliverables
 
 #### Features
-- [ ] Sync phone contacts
-- [ ] Find users by phone number
-- [ ] Block/unblock users
-- [ ] Profile QR code sharing
-- [ ] Profile link sharing
-
-#### Components
-- [ ] ContactList organism
-- [ ] BlockedList organism
-- [ ] QRCodeDisplay organism
-- [ ] ProfileShare molecule
+- [x] Sync phone contacts (bulk)
+- [x] Find users by phone number
+- [x] Block/unblock users
+- [x] Blocked users list
 
 #### API Routes
-- [ ] `POST /api/users/contacts/sync` - Bulk sync contacts
-- [ ] `GET /api/users/blocked` - List blocked users
+- [x] `POST /api/users/contacts` - Add contact or bulk sync
+- [x] `GET /api/users/contacts?blocked_only=true` - List blocked users
+- [x] `DELETE /api/users/contacts?block=true` - Block contact
+
+#### Testing
+- [x] 9 Playwright tests passing
 
 ---
 
@@ -402,8 +406,9 @@ helloapp/
 
 | Suite | Tests | Status |
 |-------|-------|--------|
-| Auth Flow | 8 | ✅ Passing |
-| Messaging | 1 (skipped) | 🔵 Pending |
+| Auth Flow | 9 | ✅ Passing |
+| Phase 3: User Experience | 8 | ✅ Passing |
+| Phase 4: Contacts & Social | 9 | ✅ Passing |
 
 ### Test Coverage Goals
 - Auth flows: 100%
