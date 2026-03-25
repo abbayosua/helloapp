@@ -7,9 +7,10 @@ import { ChatHeader } from '@/components/organisms/chat-header';
 import { MessageList } from '@/components/organisms/message-list';
 import { MessageInput } from '@/components/organisms/message-input';
 import { NewChatDialog } from '@/components/organisms/new-chat-dialog';
+import { CreateGroupDialog } from '@/components/organisms/create-group-dialog';
+import { GroupInfo } from '@/components/organisms/group-info';
 import { SearchDialog } from '@/components/organisms/search-dialog';
-import { Loader2, Search } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { Loader2, Search, Info } from 'lucide-react';
 import { usePresence } from '@/hooks/use-presence';
 import { Button } from '@/components/atoms/button';
 
@@ -38,12 +39,13 @@ interface ReplyToMessage {
   sender_name: string;
 }
 
+type DialogType = 'none' | 'newChat' | 'newGroup' | 'search' | 'groupInfo';
+
 export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<Profile | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [showNewChat, setShowNewChat] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
+  const [activeDialog, setActiveDialog] = useState<DialogType>('none');
   const [isLoading, setIsLoading] = useState(true);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyToMessage | null>(null);
@@ -89,7 +91,7 @@ export default function HomePage() {
         const data = await response.json();
         setSelectedConversation(data.conversation);
         setIsMobileChatOpen(true);
-        setReplyTo(null); // Clear reply when switching conversations
+        setReplyTo(null);
       }
     } catch (error) {
       console.error('Failed to load conversation:', error);
@@ -109,9 +111,12 @@ export default function HomePage() {
   };
 
   const handleMessageFound = (messageId: string) => {
-    // Scroll to message in the message list
     console.log('Found message:', messageId);
-    // The MessageList component will handle the scrolling
+  };
+
+  const handleLeaveGroup = () => {
+    setSelectedConversation(null);
+    setIsMobileChatOpen(false);
   };
 
   if (isLoading) {
@@ -135,7 +140,8 @@ export default function HomePage() {
           user={user}
           selectedConversationId={selectedConversation?.id || null}
           onSelectConversation={handleSelectConversation}
-          onNewChat={() => setShowNewChat(true)}
+          onNewChat={() => setActiveDialog('newChat')}
+          onNewGroup={() => setActiveDialog('newGroup')}
           onLogout={handleLogout}
         />
       </div>
@@ -152,14 +158,26 @@ export default function HomePage() {
               isGroup={selectedConversation.type === 'group'}
               onBack={() => setIsMobileChatOpen(false)}
               actions={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-gray-500"
-                  onClick={() => setShowSearch(true)}
-                >
-                  <Search className="h-5 w-5" />
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-gray-500"
+                    onClick={() => setActiveDialog('search')}
+                  >
+                    <Search className="h-5 w-5" />
+                  </Button>
+                  {selectedConversation.type === 'group' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-gray-500"
+                      onClick={() => setActiveDialog('groupInfo')}
+                    >
+                      <Info className="h-5 w-5" />
+                    </Button>
+                  )}
+                </>
               }
             />
             <MessageList
@@ -196,30 +214,56 @@ export default function HomePage() {
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
               Send and receive messages with HelloApp
             </p>
-            <button
-              onClick={() => setShowNewChat(true)}
-              className="text-[#25D366] hover:underline font-medium"
-            >
-              Start a new conversation
-            </button>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setActiveDialog('newChat')}
+                className="text-[#25D366] hover:underline font-medium"
+              >
+                Start a new conversation
+              </button>
+              <span className="text-gray-300">|</span>
+              <button
+                onClick={() => setActiveDialog('newGroup')}
+                className="text-[#25D366] hover:underline font-medium"
+              >
+                Create a group
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       {/* New Chat Dialog */}
       <NewChatDialog
-        isOpen={showNewChat}
-        onClose={() => setShowNewChat(false)}
+        isOpen={activeDialog === 'newChat'}
+        onClose={() => setActiveDialog('none')}
         onConversationCreated={handleNewConversation}
+      />
+
+      {/* Create Group Dialog */}
+      <CreateGroupDialog
+        isOpen={activeDialog === 'newGroup'}
+        onClose={() => setActiveDialog('none')}
+        onGroupCreated={handleNewConversation}
       />
 
       {/* Search Dialog */}
       {selectedConversation && (
         <SearchDialog
-          isOpen={showSearch}
-          onClose={() => setShowSearch(false)}
+          isOpen={activeDialog === 'search'}
+          onClose={() => setActiveDialog('none')}
           conversationId={selectedConversation.id}
           onMessageClick={handleMessageFound}
+        />
+      )}
+
+      {/* Group Info Dialog */}
+      {selectedConversation?.type === 'group' && (
+        <GroupInfo
+          groupId={selectedConversation.id}
+          currentUserId={user.id}
+          onClose={() => setActiveDialog('none')}
+          onLeaveGroup={handleLeaveGroup}
         />
       )}
     </div>

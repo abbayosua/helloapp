@@ -6,3 +6,5 @@ export { MessageList } from './message-list';
 export { MessageInput } from './message-input';
 export { NewChatDialog } from './new-chat-dialog';
 export { SearchDialog } from './search-dialog';
+export { CreateGroupDialog } from './create-group-dialog';
+export { GroupInfo } from './group-info';

@@ -6,13 +6,20 @@ import { ChatItem } from '@/components/molecules/chat-item';
 import { UserAvatar } from '@/components/molecules/user-avatar';
 import { Button } from '@/components/atoms/button';
 import { 
-  MoreVertical, 
   MessageSquarePlus, 
   LogOut,
   Settings,
-  Loader2
+  Loader2,
+  Users,
+  ChevronDown
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface Profile {
   id: string;
@@ -41,6 +48,7 @@ interface SidebarProps {
   selectedConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
+  onNewGroup?: () => void;
   onLogout: () => void;
 }
 
@@ -50,6 +58,7 @@ export function Sidebar({
   selectedConversationId,
   onSelectConversation,
   onNewChat,
+  onNewGroup,
   onLogout,
 }: SidebarProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -109,15 +118,30 @@ export function Sidebar({
       <div className="px-4 py-3 bg-[#F0F2F5] dark:bg-[#202C33] flex items-center justify-between">
         <UserAvatar user={user} size="md" showStatus />
         <div className="flex items-center gap-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"
-            onClick={onNewChat}
-            title="New chat"
-          >
-            <MessageSquarePlus className="h-5 w-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"
+                title="New"
+              >
+                <MessageSquarePlus className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onNewChat}>
+                <MessageSquarePlus className="h-4 w-4 mr-2" />
+                New chat
+              </DropdownMenuItem>
+              {onNewGroup && (
+                <DropdownMenuItem onClick={onNewGroup}>
+                  <Users className="h-4 w-4 mr-2" />
+                  New group
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button 
             variant="ghost" 
             size="icon" 
@@ -165,6 +189,15 @@ export function Sidebar({
             >
               Start a new chat
             </Button>
+            {onNewGroup && (
+              <Button 
+                variant="ghost" 
+                className="text-[#25D366]"
+                onClick={onNewGroup}
+              >
+                Create a group
+              </Button>
+            )}
           </div>
         ) : (
           filteredConversations.map((conv) => (

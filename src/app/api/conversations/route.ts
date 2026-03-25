@@ -403,6 +403,20 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+
+      // Add creator as super_admin
+      const { error: adminError } = await adminClient
+        .from('group_admins')
+        .insert({
+          group_id: conversation.id,
+          user_id: profile.id,
+          role: 'super_admin',
+        });
+
+      if (adminError) {
+        console.error('Error adding group admin:', adminError);
+        // Non-critical error, continue
+      }
     }
 
     // Add participants using admin client
@@ -411,9 +425,17 @@ export async function POST(request: NextRequest) {
       user_id: userId,
     }));
 
+    console.log('Inserting participants:', { 
+      allParticipantIds, 
+      participantInserts,
+      count: participantInserts.length 
+    });
+
     const { error: participantsError } = await adminClient
       .from('conversation_participants')
       .insert(participantInserts);
+
+    console.log('Insert result:', { participantsError });
 
     if (participantsError) {
       console.error('Error adding participants:', participantsError);
@@ -424,6 +446,13 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Verify participants were added
+    const { data: addedParticipants } = await adminClient
+      .from('conversation_participants')
+      .select('user_id')
+      .eq('conversation_id', conversation.id);
+    console.log('Verified participants in DB:', addedParticipants);
 
     // Get participant profiles for response
     const { data: participantProfiles } = await adminClient
