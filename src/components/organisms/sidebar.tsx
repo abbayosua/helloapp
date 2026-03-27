@@ -116,7 +116,16 @@ export function Sidebar({
     <div className="w-full md:w-[400px] bg-white dark:bg-[#111B21] border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
       {/* Sidebar Header */}
       <div className="px-4 py-3 bg-[#F0F2F5] dark:bg-[#202C33] flex items-center justify-between">
-        <UserAvatar user={user} size="md" showStatus />
+        <UserAvatar 
+          user={{
+            id: userId,
+            name: user?.display_name || null,
+            avatar: user?.avatar_url,
+            isOnline: true
+          }} 
+          size="md" 
+          showStatus 
+        />
         <div className="flex items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

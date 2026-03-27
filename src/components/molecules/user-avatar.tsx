@@ -7,7 +7,7 @@ import { OnlineIndicator } from "@/components/atoms/online-indicator"
 
 export interface User {
   id: string
-  name: string
+  name: string | null
   avatar?: string | null
   isOnline?: boolean
 }
@@ -36,7 +36,8 @@ const statusSizeMap = {
 export const UserAvatar = React.forwardRef<HTMLDivElement, UserAvatarProps>(
   ({ user, size = "md", showStatus = true, className }, ref) => {
     const initials = React.useMemo(() => {
-      return user.name
+      const name = user.name || "User"
+      return name
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -50,7 +51,7 @@ export const UserAvatar = React.forwardRef<HTMLDivElement, UserAvatarProps>(
           {user.avatar && (
             <AvatarImage 
               src={user.avatar} 
-              alt={user.name}
+              alt={user.name || "User"}
               className="object-cover"
             />
           )}

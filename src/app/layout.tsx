@@ -14,24 +14,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  title: "HelloApp - Chat with your friends!",
+  description: "HelloApp - A modern messaging app to chat with your friends in real-time. Send messages, create groups, and stay connected.",
+  keywords: ["HelloApp", "Chat", "Messaging", "Real-time", "WhatsApp clone", "Next.js", "React"],
+  authors: [{ name: "abbayosua" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "HelloApp - Chat with your friends!",
+    description: "A modern messaging app to chat with your friends in real-time",
+    url: "https://helloapp.vercel.app",
+    siteName: "HelloApp",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "HelloApp - Chat with your friends!",
+    description: "A modern messaging app to chat with your friends in real-time",
   },
 };
 
