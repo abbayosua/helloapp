@@ -1,6 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import type { Profile, Conversation, ConversationParticipant } from '@/types/database';
+import type { Profile, ConversationParticipant } from '@/types/database';
 
 interface UpdateConversationBody {
   name?: string;
@@ -12,11 +12,11 @@ interface UpdateConversationBody {
 
 // Helper to verify user is participant in conversation
 async function verifyParticipant(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  client: Awaited<ReturnType<typeof createAdminClient>>,
   userId: string,
   conversationId: string
 ): Promise<{ isParticipant: boolean; participant?: ConversationParticipant }> {
-  const { data: participant, error } = await supabase
+  const { data: participant, error } = await client
     .from('conversation_participants')
     .select('*')
     .eq('conversation_id', conversationId)
@@ -49,24 +49,31 @@ export async function GET(
       );
     }
 
-    // Get user's profile
-    const { data: profile, error: profileError } = await supabase
+    // Get user's profile using admin client
+    const { data: profile, error: profileError } = await adminClient
       .from('profiles')
       .select('id')
       .eq('id', user.id)
       .single();
 
     if (profileError || !profile) {
+      console.error('Profile error:', profileError);
       return NextResponse.json(
         { error: 'Profile not found' },
         { status: 404 }
       );
     }
 
-    // Verify user is participant (use admin client for RLS bypass)
-    const { isParticipant, participant } = await verifyParticipant(adminClient, profile.id, conversationId);
+    // Verify user is participant using admin client
+    const { data: participant, error: participantError } = await adminClient
+      .from('conversation_participants')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', profile.id)
+      .single();
 
-    if (!isParticipant) {
+    if (participantError || !participant) {
+      console.error('Participant verification error:', participantError);
       return NextResponse.json(
         { error: 'Conversation not found or access denied' },
         { status: 404 }
@@ -81,33 +88,45 @@ export async function GET(
       .single();
 
     if (convError || !conversation) {
+      console.error('Conversation fetch error:', convError);
       return NextResponse.json(
         { error: 'Conversation not found' },
         { status: 404 }
       );
     }
 
-    // Get all participants with their profiles (use admin client)
+    // Get all participants with their profiles
     const { data: participants, error: participantsError } = await adminClient
       .from('conversation_participants')
-      .select(`
-        user_id,
-        role,
-        last_read_at,
-        joined_at
-      `)
+      .select('user_id, role, last_read_at, joined_at')
       .eq('conversation_id', conversationId);
+
+    console.log('Participants fetch result:', { 
+      conversationId, 
+      participants, 
+      error: participantsError,
+      count: participants?.length 
+    });
 
     if (participantsError) {
       console.error('Error fetching participants:', participantsError);
       return NextResponse.json(
-        { error: 'Failed to fetch participants' },
+        { error: 'Failed to fetch participants', details: participantsError.message },
         { status: 500 }
       );
     }
 
-    // Get profiles for participants (use admin client)
+    // Get profiles for participants
     const userIds = participants?.map(p => p.user_id) || [];
+    
+    if (userIds.length === 0) {
+      console.error('No participants found for conversation:', conversationId);
+      return NextResponse.json(
+        { error: 'No participants found' },
+        { status: 500 }
+      );
+    }
+
     const { data: profiles, error: profilesError } = await adminClient
       .from('profiles')
       .select('*')
@@ -116,7 +135,7 @@ export async function GET(
     if (profilesError) {
       console.error('Error fetching profiles:', profilesError);
       return NextResponse.json(
-        { error: 'Failed to fetch participant profiles' },
+        { error: 'Failed to fetch participant profiles', details: profilesError.message },
         { status: 500 }
       );
     }
@@ -134,8 +153,8 @@ export async function GET(
       } as Profile & { role: string; last_read_at: string | null; joined_at: string };
     });
 
-    // Get last message (use admin client)
-    const { data: lastMessage, error: lastMsgError } = await adminClient
+    // Get last message
+    const { data: lastMessage } = await adminClient
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
@@ -144,23 +163,23 @@ export async function GET(
       .limit(1)
       .single();
 
-    // Calculate unread count (use admin client)
+    // Calculate unread count
     let unreadCount = 0;
     const userLastRead = participant?.last_read_at;
 
     if (!userLastRead) {
-      const { count, error: countError } = await adminClient
+      const { count } = await adminClient
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('conversation_id', conversationId)
         .is('deleted_at', null)
         .neq('sender_id', profile.id);
 
-      if (!countError && count !== null) {
+      if (count !== null) {
         unreadCount = count;
       }
     } else {
-      const { count, error: countError } = await adminClient
+      const { count } = await adminClient
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('conversation_id', conversationId)
@@ -168,7 +187,7 @@ export async function GET(
         .neq('sender_id', profile.id)
         .gt('created_at', userLastRead);
 
-      if (!countError && count !== null) {
+      if (count !== null) {
         unreadCount = count;
       }
     }
@@ -185,7 +204,7 @@ export async function GET(
   } catch (error) {
     console.error('Get conversation error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch conversation' },
+      { error: 'Failed to fetch conversation', details: String(error) },
       { status: 500 }
     );
   }
@@ -199,6 +218,7 @@ export async function PATCH(
   try {
     const { id: conversationId } = await params;
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -209,8 +229,8 @@ export async function PATCH(
       );
     }
 
-    // Get user's profile
-    const { data: profile, error: profileError } = await supabase
+    // Get user's profile using admin client
+    const { data: profile, error: profileError } = await adminClient
       .from('profiles')
       .select('id')
       .eq('id', user.id)
@@ -223,8 +243,8 @@ export async function PATCH(
       );
     }
 
-    // Verify user is participant
-    const { isParticipant, participant } = await verifyParticipant(supabase, profile.id, conversationId);
+    // Verify user is participant using admin client
+    const { isParticipant, participant } = await verifyParticipant(adminClient, profile.id, conversationId);
 
     if (!isParticipant) {
       return NextResponse.json(
@@ -236,8 +256,8 @@ export async function PATCH(
     const body: UpdateConversationBody = await request.json();
     const { name, avatar_url } = body;
 
-    // Get conversation to check if it's a group
-    const { data: conversation, error: convError } = await supabase
+    // Get conversation to check if it's a group using admin client
+    const { data: conversation, error: convError } = await adminClient
       .from('conversations')
       .select('*')
       .eq('id', conversationId)
@@ -265,7 +285,7 @@ export async function PATCH(
       if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
 
       if (Object.keys(updateData).length > 0) {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await adminClient
           .from('groups')
           .update(updateData)
           .eq('id', conversationId);
@@ -280,12 +300,8 @@ export async function PATCH(
       }
     }
 
-    // Update participant-specific settings (muted, archived, pinned)
-    // Note: These fields are not in the current schema but can be added later
-    // For now, we'll just return success
-
-    // Get updated conversation
-    const { data: updatedConversation, error: fetchError } = await supabase
+    // Get updated conversation using admin client
+    const { data: updatedConversation, error: fetchError } = await adminClient
       .from('conversations')
       .select('*')
       .eq('id', conversationId)
@@ -320,6 +336,7 @@ export async function DELETE(
   try {
     const { id: conversationId } = await params;
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -330,8 +347,8 @@ export async function DELETE(
       );
     }
 
-    // Get user's profile
-    const { data: profile, error: profileError } = await supabase
+    // Get user's profile using admin client
+    const { data: profile, error: profileError } = await adminClient
       .from('profiles')
       .select('id')
       .eq('id', user.id)
@@ -344,8 +361,8 @@ export async function DELETE(
       );
     }
 
-    // Verify user is participant
-    const { isParticipant, participant } = await verifyParticipant(supabase, profile.id, conversationId);
+    // Verify user is participant using admin client
+    const { isParticipant, participant } = await verifyParticipant(adminClient, profile.id, conversationId);
 
     if (!isParticipant) {
       return NextResponse.json(
@@ -354,8 +371,8 @@ export async function DELETE(
       );
     }
 
-    // Get conversation details
-    const { data: conversation, error: convError } = await supabase
+    // Get conversation details using admin client
+    const { data: conversation, error: convError } = await adminClient
       .from('conversations')
       .select('*')
       .eq('id', conversationId)
@@ -368,8 +385,8 @@ export async function DELETE(
       );
     }
 
-    // Get all participants count
-    const { count: participantCount, error: countError } = await supabase
+    // Get all participants count using admin client
+    const { count: participantCount, error: countError } = await adminClient
       .from('conversation_participants')
       .select('*', { count: 'exact', head: true })
       .eq('conversation_id', conversationId);
@@ -385,7 +402,7 @@ export async function DELETE(
     // If this is the last participant or it's a direct conversation, delete the whole conversation
     if ((participantCount || 0) <= 1 || conversation.type === 'direct') {
       // Delete all messages first
-      const { error: deleteMessagesError } = await supabase
+      const { error: deleteMessagesError } = await adminClient
         .from('messages')
         .delete()
         .eq('conversation_id', conversationId);
@@ -395,7 +412,7 @@ export async function DELETE(
       }
 
       // Delete all participants
-      const { error: deleteParticipantsError } = await supabase
+      const { error: deleteParticipantsError } = await adminClient
         .from('conversation_participants')
         .delete()
         .eq('conversation_id', conversationId);
@@ -405,7 +422,7 @@ export async function DELETE(
       }
 
       // Delete the conversation
-      const { error: deleteConvError } = await supabase
+      const { error: deleteConvError } = await adminClient
         .from('conversations')
         .delete()
         .eq('id', conversationId);
@@ -428,7 +445,7 @@ export async function DELETE(
     // If the user is admin, transfer admin role to another participant
     if (participant?.role === 'admin') {
       // Find another participant to transfer admin
-      const { data: otherParticipants, error: otherError } = await supabase
+      const { data: otherParticipants, error: otherError } = await adminClient
         .from('conversation_participants')
         .select('user_id')
         .eq('conversation_id', conversationId)
@@ -437,7 +454,7 @@ export async function DELETE(
 
       if (!otherError && otherParticipants && otherParticipants.length > 0) {
         // Transfer admin role
-        await supabase
+        await adminClient
           .from('conversation_participants')
           .update({ role: 'admin' })
           .eq('conversation_id', conversationId)
@@ -446,7 +463,7 @@ export async function DELETE(
     }
 
     // Remove the user from participants
-    const { error: leaveError } = await supabase
+    const { error: leaveError } = await adminClient
       .from('conversation_participants')
       .delete()
       .eq('conversation_id', conversationId)
