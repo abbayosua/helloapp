@@ -8,7 +8,7 @@ import { Timestamp } from "@/components/atoms/timestamp"
 
 export interface Conversation {
   id: string
-  name: string
+  name: string | null
   avatar?: string | null
   isOnline?: boolean
   lastMessage?: {
@@ -35,6 +35,8 @@ export const ChatItem = React.forwardRef<HTMLDivElement, ChatItemProps>(
       return text.slice(0, maxLength) + "..."
     }
 
+    const displayName = conversation.name || "Unknown"
+
     return (
       <div
         ref={ref}
@@ -50,7 +52,7 @@ export const ChatItem = React.forwardRef<HTMLDivElement, ChatItemProps>(
         <UserAvatar 
           user={{
             id: conversation.id,
-            name: conversation.name,
+            name: displayName,
             avatar: conversation.avatar,
             isOnline: conversation.isOnline,
           }}
@@ -64,7 +66,7 @@ export const ChatItem = React.forwardRef<HTMLDivElement, ChatItemProps>(
               "font-medium truncate",
               conversation.unreadCount && conversation.unreadCount > 0 && "font-semibold"
             )}>
-              {conversation.name}
+              {displayName}
             </span>
             {conversation.lastMessage && (
               <Timestamp 

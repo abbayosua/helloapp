@@ -33,7 +33,7 @@ interface Profile {
 interface Conversation {
   id: string;
   type: 'direct' | 'group';
-  name: string;
+  name: string | null;
   avatar_url: string | null;
   last_message: string | null;
   last_message_at: string | null;
@@ -108,9 +108,10 @@ export function Sidebar({
     };
   }, [loadConversations]);
 
-  const filteredConversations = conversations.filter((conv) =>
-    conv.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredConversations = conversations.filter((conv) => {
+    const name = conv.name || '';
+    return name.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   return (
     <div className="w-full md:w-[400px] bg-white dark:bg-[#111B21] border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
