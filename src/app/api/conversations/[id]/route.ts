@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Profile, Conversation, ConversationParticipant } from '@/types/database';
 
@@ -38,6 +38,7 @@ export async function GET(
   try {
     const { id: conversationId } = await params;
     const supabase = await createClient();
+    const adminClient = await createAdminClient();
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -62,8 +63,8 @@ export async function GET(
       );
     }
 
-    // Verify user is participant
-    const { isParticipant, participant } = await verifyParticipant(supabase, profile.id, conversationId);
+    // Verify user is participant (use admin client for RLS bypass)
+    const { isParticipant, participant } = await verifyParticipant(adminClient, profile.id, conversationId);
 
     if (!isParticipant) {
       return NextResponse.json(
@@ -73,7 +74,7 @@ export async function GET(
     }
 
     // Get conversation details
-    const { data: conversation, error: convError } = await supabase
+    const { data: conversation, error: convError } = await adminClient
       .from('conversations')
       .select('*')
       .eq('id', conversationId)
@@ -86,8 +87,8 @@ export async function GET(
       );
     }
 
-    // Get all participants with their profiles
-    const { data: participants, error: participantsError } = await supabase
+    // Get all participants with their profiles (use admin client)
+    const { data: participants, error: participantsError } = await adminClient
       .from('conversation_participants')
       .select(`
         user_id,
@@ -105,9 +106,9 @@ export async function GET(
       );
     }
 
-    // Get profiles for participants
+    // Get profiles for participants (use admin client)
     const userIds = participants?.map(p => p.user_id) || [];
-    const { data: profiles, error: profilesError } = await supabase
+    const { data: profiles, error: profilesError } = await adminClient
       .from('profiles')
       .select('*')
       .in('id', userIds);
@@ -133,37 +134,37 @@ export async function GET(
       } as Profile & { role: string; last_read_at: string | null; joined_at: string };
     });
 
-    // Get last message
-    const { data: lastMessage, error: lastMsgError } = await supabase
+    // Get last message (use admin client)
+    const { data: lastMessage, error: lastMsgError } = await adminClient
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
-      .eq('is_deleted', false)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
-    // Calculate unread count
+    // Calculate unread count (use admin client)
     let unreadCount = 0;
     const userLastRead = participant?.last_read_at;
 
     if (!userLastRead) {
-      const { count, error: countError } = await supabase
+      const { count, error: countError } = await adminClient
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('conversation_id', conversationId)
-        .eq('is_deleted', false)
+        .is('deleted_at', null)
         .neq('sender_id', profile.id);
 
       if (!countError && count !== null) {
         unreadCount = count;
       }
     } else {
-      const { count, error: countError } = await supabase
+      const { count, error: countError } = await adminClient
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('conversation_id', conversationId)
-        .eq('is_deleted', false)
+        .is('deleted_at', null)
         .neq('sender_id', profile.id)
         .gt('created_at', userLastRead);
 
