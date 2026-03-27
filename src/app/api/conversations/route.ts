@@ -4,11 +4,14 @@ import type { Profile, Conversation, Message } from '@/types/database';
 
 // Extended types for API responses
 interface ConversationWithDetails extends Conversation {
+  name: string | null;  // Derived name for direct conversations
   participants: (Profile & {
     last_read_at: string | null;
   })[];
   last_message: Message | null;
   unread_count: number;
+  partner_id?: string;  // For direct conversations
+  partner_status?: string;  // For direct conversations
 }
 
 interface CreateConversationBody {
@@ -214,16 +217,36 @@ export async function GET(request: NextRequest) {
       const participants = convParticipants.map(p => {
         const userProfile = profileMap.get(p.user_id);
         return {
-          ...(userProfile || { id: p.user_id, email: '', created_at: '', updated_at: '', is_online: false }),
+          ...(userProfile || { id: p.user_id, email: '', created_at: '', updated_at: '', is_online: false, display_name: null, avatar_url: null, phone: null, about: 'Hey there! I am using HelloApp', status: 'offline' }),
           last_read_at: p.last_read_at,
         } as Profile & { last_read_at: string | null };
       });
 
+      // For direct conversations, derive name from the other participant
+      let derivedName: string | null = null;
+      let partnerId: string | undefined;
+      let partnerStatus: string | undefined;
+
+      if (conv.type === 'direct') {
+        const otherParticipant = participants.find(p => p.id !== profile.id);
+        if (otherParticipant) {
+          derivedName = otherParticipant.display_name || otherParticipant.phone || 'Unknown';
+          partnerId = otherParticipant.id;
+          partnerStatus = otherParticipant.status;
+        }
+      } else {
+        // For groups, try to get name from groups table
+        derivedName = null; // Will be populated from groups table if exists
+      }
+
       return {
         ...conv,
+        name: derivedName,
         participants,
         last_message: lastMessageMap.get(conv.id) || null,
         unread_count: unreadCountMap.get(conv.id) || 0,
+        partner_id: partnerId,
+        partner_status: partnerStatus,
       };
     });
 

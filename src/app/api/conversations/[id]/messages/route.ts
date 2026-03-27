@@ -95,7 +95,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const messagesData = hasMore ? messages?.slice(0, limit) : messages;
 
     // Transform data to match MessageWithSender type
-    const transformedMessages: MessageWithSender[] = (
+    // Also add is_own field for the current user
+    const transformedMessages: (MessageWithSender & { is_own: boolean })[] = (
       messagesData || []
     ).map((msg) => ({
       id: msg.id,
@@ -109,6 +110,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       deleted_at: msg.deleted_at,
       sender: msg.sender,
       reactions: msg.reactions || [],
+      is_own: msg.sender_id === user.id,
     }));
 
     // Get the cursor for the next page (oldest message's created_at)
