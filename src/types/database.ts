@@ -95,6 +95,7 @@ export interface Database {
           pinned: boolean
           archived: boolean
           joined_at: string
+          role: string  // 'member', 'admin', or 'super_admin'
         }
         Insert: {
           id?: string
@@ -105,6 +106,7 @@ export interface Database {
           pinned?: boolean
           archived?: boolean
           joined_at?: string
+          role?: string  // 'member', 'admin', or 'super_admin'
         }
         Update: {
           id?: string
@@ -115,6 +117,7 @@ export interface Database {
           pinned?: boolean
           archived?: boolean
           joined_at?: string
+          role?: string  // 'member', 'admin', or 'super_admin'
         }
         Relationships: [
           {
