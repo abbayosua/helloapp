@@ -28,7 +28,7 @@ export function NewChatDialog({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
+  const [creatingUserId, setCreatingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSearch = useCallback(async (query: string) => {
@@ -56,7 +56,7 @@ export function NewChatDialog({
   }, []);
 
   const handleStartConversation = async (userId: string) => {
-    setIsCreating(true);
+    setCreatingUserId(userId);
     setError(null);
 
     try {
@@ -75,12 +75,14 @@ export function NewChatDialog({
         onClose();
       } else {
         const errorData = await response.json();
+        console.error('Failed to create conversation:', errorData);
         setError(errorData.error || 'Failed to create conversation');
       }
-    } catch {
+    } catch (err) {
+      console.error('Failed to create conversation:', err);
       setError('Failed to create conversation');
     } finally {
-      setIsCreating(false);
+      setCreatingUserId(null);
     }
   };
 
@@ -146,25 +148,41 @@ export function NewChatDialog({
             </div>
           ) : (
             <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-              {searchResults.map((user) => (
-                <li key={user.id}>
-                  <button
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                    onClick={() => handleStartConversation(user.id)}
-                    disabled={isCreating}
-                  >
-                    <UserAvatar user={user} size="md" />
-                    <div className="flex-1 min-w-0 text-left">
-                      <p className="font-medium text-foreground truncate">
-                        {user.display_name || 'Unknown'}
-                      </p>
-                      <p className="text-sm text-gray-500 truncate">
-                        {user.phone || 'No phone'}
-                      </p>
-                    </div>
-                  </button>
-                </li>
-              ))}
+              {searchResults.map((user) => {
+                const isCreatingThis = creatingUserId === user.id;
+                return (
+                  <li key={user.id}>
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => handleStartConversation(user.id)}
+                      disabled={!!creatingUserId}
+                    >
+                      {isCreatingThis ? (
+                        <Loader2 className="h-10 w-10 animate-spin text-gray-400" />
+                      ) : (
+                        <UserAvatar 
+                          user={{
+                            id: user.id,
+                            name: user.display_name,
+                            avatar: user.avatar_url,
+                          }} 
+                          size="md" 
+                          showStatus={false}
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground truncate">
+                          {user.display_name || 'Unknown'}
+                        </p>
+                        <p className="text-sm text-gray-500 truncate">
+                          {user.phone || 'No phone'}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
