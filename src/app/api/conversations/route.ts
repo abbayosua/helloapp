@@ -126,6 +126,19 @@ export async function GET(request: NextRequest) {
 
     const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
 
+    // Get group details for group conversations
+    const groupConversationIds = conversations?.filter(c => c.type === 'group').map(c => c.id) || [];
+    const { data: groupsData, error: groupsError } = await supabase
+      .from('groups')
+      .select('id, name, avatar_url')
+      .in('id', groupConversationIds);
+
+    if (groupsError) {
+      console.error('Error fetching groups:', groupsError);
+    }
+
+    const groupMap = new Map(groupsData?.map(g => [g.id, g]) || []);
+
     // Get last messages for all conversations
     const { data: lastMessages, error: messagesError } = await supabase
       .from('messages')
@@ -226,6 +239,7 @@ export async function GET(request: NextRequest) {
       let derivedName: string | null = null;
       let partnerId: string | undefined;
       let partnerStatus: string | undefined;
+      let derivedAvatar: string | null = null;
 
       if (conv.type === 'direct') {
         const otherParticipant = participants.find(p => p.id !== profile.id);
@@ -233,15 +247,21 @@ export async function GET(request: NextRequest) {
           derivedName = otherParticipant.display_name || otherParticipant.phone || 'Unknown';
           partnerId = otherParticipant.id;
           partnerStatus = otherParticipant.status;
+          derivedAvatar = otherParticipant.avatar_url;
         }
       } else {
-        // For groups, try to get name from groups table
-        derivedName = null; // Will be populated from groups table if exists
+        // For groups, get name from groups table
+        const groupData = groupMap.get(conv.id);
+        if (groupData) {
+          derivedName = groupData.name;
+          derivedAvatar = groupData.avatar_url;
+        }
       }
 
       return {
         ...conv,
         name: derivedName,
+        avatar_url: derivedAvatar,
         participants,
         last_message: lastMessageMap.get(conv.id) || null,
         unread_count: unreadCountMap.get(conv.id) || 0,
